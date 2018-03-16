@@ -18,6 +18,8 @@
 open Result
 open Lwt.Infix
 
+external eth_dump_frame: Cstruct.t -> int = "eth_dump_frame"
+
 let src = Logs.Src.create "ethif" ~doc:"Mirage Ethernet"
 module Log = (val Logs.src_log src : Logs.LOG)
 
@@ -52,6 +54,8 @@ module Make(Netif : Mirage_net_lwt.S) = struct
     | Ok (header, payload) when of_interest header.destination ->
       begin
         Log.info (fun f -> f "Eth.input: dest=%s for us" (Macaddr.to_string (header.destination)) );
+        Log.info (fun f -> f "INPUT eth0:"); Cstruct.hexdump frame;
+        eth_dump_frame frame;
         let open Ethif_wire in
         match header.ethertype with
         | ARP -> Log.info (fun f -> f "Eth.input: ARP"); arpv4 payload
