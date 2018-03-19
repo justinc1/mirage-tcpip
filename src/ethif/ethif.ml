@@ -48,7 +48,7 @@ module Make(Netif : Mirage_net_lwt.S) = struct
     let open Ethif_packet in
     MProf.Trace.label "ethif.input";
     let of_interest dest =
-      Macaddr.compare dest (mac t) = 0 || not (Macaddr.is_unicast dest)
+      true (*Macaddr.compare dest (mac t) = 0 || not (Macaddr.is_unicast dest) || true*)
     in
     match Unmarshal.of_cstruct frame with
     | Ok (header, payload) when of_interest header.destination ->
@@ -58,6 +58,7 @@ module Make(Netif : Mirage_net_lwt.S) = struct
         eth_dump_frame frame;
         let open Ethif_wire in
         match header.ethertype with
+        | VLAN -> Log.info (fun f -> f "Eth.input: VLAN"); arpv4 payload
         | ARP -> Log.info (fun f -> f "Eth.input: ARP"); arpv4 payload
         | IPv4 -> Log.info (fun f -> f "Eth.input: IPv4"); ipv4 payload
         | IPv6 -> Log.info (fun f -> f "Eth.input: IPv6"); ipv6 payload
@@ -66,7 +67,7 @@ module Make(Netif : Mirage_net_lwt.S) = struct
       Log.info (fun f -> f "Eth.input: not our MAC");
       Lwt.return_unit)
     | Error s ->
-      Log.debug (fun f -> f "Dropping Ethernet frame: %s" s);
+      Log.info (fun f -> f "Dropping Ethernet frame: %s" s);
       Lwt.return_unit
 
   let write t frame =

@@ -9,6 +9,7 @@ type ethernet = {
 [%%cenum
 type ethertype =
   | ARP  [@id 0x0806]
+  | VLAN [@id 0x8100]
   | IPv4 [@id 0x0800]
   | IPv6 [@id 0x86dd]
   [@@uint16_t]
