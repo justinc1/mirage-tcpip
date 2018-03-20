@@ -348,6 +348,12 @@ Very basic ethernet frame C struct;
 Ignore possibility of VLAN and other not-most-primitive technologies.
 We will try to forward/drop only most basic IP packets.
 */
+
+#define ETH_TYPE_ARP  0x0806
+#define ETH_TYPE_IPv4 0x0800
+#define ETH_TYPE_VLAN 0x8100
+#define ETH_TYPE_IPv6 0x86dd
+
 typedef struct icmp_frame {
   uint8_t type;
   uint8_t code;
@@ -396,34 +402,113 @@ void dump_ipv4_frame(const ipv4_frame* fr) {
   //printk("  IPv4: &src=%p &dest=%p\n", &(fr->src_ip.b32), &(fr->dest_ip.b32));
 }
 
+typedef struct arp_frame {
+  uint16_t hw_type;
+  uint16_t proto_type;
+  uint8_t hw_size;
+  uint8_t proto_size;
+  uint16_t opcode;
+  /*
+  sender_mac [hw_size];
+  sender_ip [proto_size];
+  target_mac [hw_size];
+  target_ip [proto_size];
+  payload [];
+  */
+  uint8_t __var_len_pp[1500];
+} arp_frame __attribute__((packed));
+
+#define arp_frame_get_sender_mac(fr) (fr->__var_len_pp)
+#define arp_frame_get_sender_ip(fr)  (fr->__var_len_pp + fr->hw_size)
+#define arp_frame_get_target_mac(fr) (fr->__var_len_pp + fr->hw_size + fr->proto_size)
+#define arp_frame_get_target_ip(fr)  (fr->__var_len_pp + fr->hw_size + fr->proto_size + fr->hw_size)
+#define arp_frame_get_payload(fr)    (fr->__var_len_pp + fr->hw_size + fr->proto_size + fr->hw_size + fr->proto_size)
+
+/*
+fmt="%02x", arr = [0x11, 0x22, 0x33], sep=":" => print "11:22:33"
+*/
+void printk_bytes(const char fmt[], const uint8_t* arr, int len, const char sep[]) {
+  if(len <= 0) return;
+  printk(fmt, arr[0]);
+  for (int ii=1; ii<len; ii++) {
+    printk(sep);
+    printk(fmt, arr[ii]);
+  }
+}
+
+void dump_arp_frame(const arp_frame* fr) {
+  //printk("  VLAN: &=%p\n", fr);
+  printk("  ARP: hw_type=%d proto_type=0x%04x hw_size=%d proto_size=%d\n",
+    local_ntohs(fr->hw_type), local_ntohs(fr->proto_type), fr->hw_size, fr->proto_size);
+  printk("  ARP: sender MAC=");
+  printk_bytes("%02x", arp_frame_get_sender_mac(fr), fr->hw_size, ":");
+  printk(" IP=");
+  printk_bytes("%d", arp_frame_get_sender_ip(fr), fr->proto_size, ".");
+  printk("\n");
+  printk("  ARP: target MAC=");
+  printk_bytes("%02x", arp_frame_get_target_mac(fr), fr->hw_size, ":");
+  printk(" IP=");
+  printk_bytes("%d", arp_frame_get_target_ip(fr), fr->proto_size, ".");
+  printk("\n");
+}
+
+typedef struct vlan_frame {
+  uint16_t prio_dei_id;
+  uint16_t type;
+  union {
+    uint8_t __data[1500];
+    ipv4_frame ipv4;
+    arp_frame arp;
+  } pp __attribute__((packed)); /* payload */
+} vlan_frame __attribute__((packed));
+
+void dump_vlan_frame(const vlan_frame* fr) {
+  //printk("  VLAN: &=%p\n", fr);
+  printk("  VLAN: tag=%d type=0x%04x\n",
+    local_ntohs(fr->prio_dei_id) & 0x0FFF, local_ntohs(fr->type) );
+  switch (local_ntohs(fr->type)) {
+    case ETH_TYPE_ARP:
+      dump_arp_frame(&(fr->pp.arp));
+      break;
+    case ETH_TYPE_IPv4:
+      dump_ipv4_frame(&(fr->pp.ipv4));
+      break;
+    default:
+      printk("         type=0x%04x UNKNOWN\n", local_ntohs(fr->type));
+      break;
+  }
+}
+
 typedef struct ethernet_frame {
   uint8_t dest_mac[6];
   uint8_t src_mac[6];
   uint16_t type;
   union {
     uint8_t __data[1500];
+    vlan_frame vlan;
     ipv4_frame ipv4;
-    //arp_frame arp;
+    arp_frame arp;
   } pp __attribute__((packed)); /* payload */
 } ethernet_frame __attribute__((packed));
-
-#define ETH_TYPE_ARP  0x0806
-#define ETH_TYPE_IPv4 0x0800
-#define ETH_TYPE_IPv6 0x86dd
 
 void dump_ethernet_frame(const ethernet_frame* fr) {
   printk("  ETHER: &=%p\n", fr);
   printk("  ETHER: src=%02x:%02x:%02x:%02x:%02x:%02x dest=%02x:%02x:%02x:%02x:%02x:%02x\n",
     fr->src_mac[0], fr->src_mac[1], fr->src_mac[2], fr->src_mac[3], fr->src_mac[4], fr->src_mac[5],
     fr->dest_mac[0], fr->dest_mac[1], fr->dest_mac[2], fr->dest_mac[3], fr->dest_mac[4], fr->dest_mac[5]);
-  printk("         type=%04x \n", local_ntohs(fr->type));
+  printk("         type=0x%04x \n", local_ntohs(fr->type));
   switch (local_ntohs(fr->type)) {
     case ETH_TYPE_ARP:
+      dump_arp_frame(&(fr->pp.arp));
+      break;
+    case ETH_TYPE_VLAN:
+      dump_vlan_frame(&(fr->pp.vlan));
       break;
     case ETH_TYPE_IPv4:
       dump_ipv4_frame(&(fr->pp.ipv4));
       break;
     default:
+      printk("         type=0x%04x UNKNOWN\n", local_ntohs(fr->type));
       break;
   }
 }
