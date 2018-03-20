@@ -43,8 +43,19 @@ module Make(Netif : Mirage_net_lwt.S) = struct
   let mac t = Netif.mac t.netif
   let mtu t = t.mtu
 
+  let write t frame =
+    MProf.Trace.label "ethif.write";
+    Netif.write t.netif frame >|= function
+    | Ok () -> Ok ()
+    | Error e ->
+      Log.warn (fun f -> f "netif write errored %a" Netif.pp_error e) ;
+      Error e
+
   let input ~arpv4 ~ipv4 ~ipv6 t frame =
     Log.info (fun f -> f "Eth.input");
+    Cstruct.hexdump frame;
+    eth_dump_frame frame;
+    (* write t frame; *)
     let open Ethif_packet in
     MProf.Trace.label "ethif.input";
     let of_interest dest =
@@ -54,8 +65,6 @@ module Make(Netif : Mirage_net_lwt.S) = struct
     | Ok (header, payload) when of_interest header.destination ->
       begin
         Log.info (fun f -> f "Eth.input: dest=%s for us" (Macaddr.to_string (header.destination)) );
-        Log.info (fun f -> f "INPUT eth0:"); Cstruct.hexdump frame;
-        eth_dump_frame frame;
         let open Ethif_wire in
         match header.ethertype with
         | VLAN -> Log.info (fun f -> f "Eth.input: VLAN"); arpv4 payload
@@ -69,14 +78,6 @@ module Make(Netif : Mirage_net_lwt.S) = struct
     | Error s ->
       Log.info (fun f -> f "Dropping Ethernet frame: %s" s);
       Lwt.return_unit
-
-  let write t frame =
-    MProf.Trace.label "ethif.write";
-    Netif.write t.netif frame >|= function
-    | Ok () -> Ok ()
-    | Error e ->
-      Log.warn (fun f -> f "netif write errored %a" Netif.pp_error e) ;
-      Error e
 
   let writev t bufs =
     MProf.Trace.label "ethif.writev";
