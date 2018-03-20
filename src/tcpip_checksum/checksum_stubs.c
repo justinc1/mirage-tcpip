@@ -381,6 +381,13 @@ typedef struct icmp_frame {
   } pp  __attribute__((packed));
 } icmp_frame __attribute__((packed));
 
+void dump_icmp_frame(const icmp_frame* fr) {
+  printk("  ICMP: type=%d code=%d checksum=%d id=%d seq=%d\n",
+    fr->type, fr->code, local_ntohs(fr->checksum),
+    local_ntohs(fr->id), local_ntohs(fr->seq));
+  // data - length is determined by ipv4_frame.length
+}
+
 typedef struct tcp_frame {
   uint16_t sport;
   uint16_t dport;
@@ -407,6 +414,20 @@ void dump_tcp_frame(const tcp_frame* fr) {
     local_ntohl(fr->seq), local_ntohl(fr->ack), header_len, flags, local_ntohs(fr->checksum));
 }
 
+typedef struct udp_frame {
+  uint16_t sport;
+  uint16_t dport;
+  uint16_t length;
+  uint16_t checksum;
+  /* data - variable length */
+  uint8_t data[1500];
+} udp_frame __attribute__((packed));
+
+void dump_udp_frame(const udp_frame* fr) {
+  printk("  UDP: sport=%d dport=%d length=%d checksum=%d\n",
+    local_ntohs(fr->sport), local_ntohs(fr->dport), local_ntohs(fr->length), local_ntohs(fr->checksum));
+}
+
 typedef struct ipv4_frame {
   uint8_t version; /* version << 4 | header length */
   uint8_t services;
@@ -427,7 +448,7 @@ typedef struct ipv4_frame {
   union {
     uint8_t __data[1500];
     icmp_frame icmp;
-    //udp_frame udp;
+    udp_frame udp;
     tcp_frame tcp;
   } pp  __attribute__((packed));
 } ipv4_frame __attribute__((packed));
@@ -444,13 +465,13 @@ void dump_ipv4_frame(const ipv4_frame* fr) {
   //printk("  IPv4: &src=%p &dest=%p\n", &(fr->src_ip.b32), &(fr->dest_ip.b32));
   switch (fr->proto) {
     case IP_PROTO_ICMP:
-      //dump_icmp_frame(&(fr->pp.arp));
+      dump_icmp_frame(&(fr->pp.icmp));
       break;
     case IP_PROTO_TCP:
       dump_tcp_frame(&(fr->pp.tcp));
       break;
     case IP_PROTO_UDP:
-      //dump_udp_frame(&(fr->pp.udp));
+      dump_udp_frame(&(fr->pp.udp));
       break;
     default:
       printk("         proto=0x%04x UNKNOWN\n", fr->proto);
