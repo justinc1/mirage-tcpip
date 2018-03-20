@@ -36,6 +36,18 @@ local_ntohs(uint16_t v)
   return (local_htons(v));
 }
 
+static inline uint32_t
+local_htonl(uint32_t v)
+{
+  return (((uint32_t)local_htons(v & 0xFFFF)) << 16) | ((uint32_t)local_htons(v >> 16));
+}
+
+static inline uint32_t
+local_ntohl(uint32_t v)
+{
+  return local_htonl(v);
+}
+
 static uint16_t
 ones_complement_checksum_bigarray(unsigned char *addr, size_t ofs, size_t count, uint64_t sum64)
 {
@@ -354,6 +366,10 @@ We will try to forward/drop only most basic IP packets.
 #define ETH_TYPE_VLAN 0x8100
 #define ETH_TYPE_IPv6 0x86dd
 
+#define IP_PROTO_ICMP 0x01
+#define IP_PROTO_TCP  0x06
+#define IP_PROTO_UDP  0x11
+
 typedef struct icmp_frame {
   uint8_t type;
   uint8_t code;
@@ -364,6 +380,32 @@ typedef struct icmp_frame {
     uint8_t __data[1500];
   } pp  __attribute__((packed));
 } icmp_frame __attribute__((packed));
+
+typedef struct tcp_frame {
+  uint16_t sport;
+  uint16_t dport;
+  uint32_t seq;
+  uint32_t ack;
+  uint16_t header_len_flags;
+  uint16_t window_size;
+  uint16_t checksum;
+  uint16_t urgent;
+  /* options - variable length */
+  /* data - variable length */
+  uint8_t __var_len_pp[1500];
+} tcp_frame __attribute__((packed));
+
+#define tcp_frame_get_header_len(fr) (local_ntohs(fr->header_len_flags) >> 12)
+#define tcp_frame_get_flags(fr)      (local_ntohs(fr->header_len_flags) & 0x0FFF)
+
+void dump_tcp_frame(const tcp_frame* fr) {
+  printk("  TCP: sport=%d dport=%d\n",
+    local_ntohs(fr->sport), local_ntohs(fr->dport) );
+  uint16_t header_len = tcp_frame_get_header_len(fr);
+  uint16_t flags = tcp_frame_get_flags(fr);
+  printk("  TCP: seq=%u ack=%u header_len=%d flags=0x%03x checksum=%d\n",
+    local_ntohl(fr->seq), local_ntohl(fr->ack), header_len, flags, local_ntohs(fr->checksum));
+}
 
 typedef struct ipv4_frame {
   uint8_t version; /* version << 4 | header length */
@@ -386,7 +428,7 @@ typedef struct ipv4_frame {
     uint8_t __data[1500];
     icmp_frame icmp;
     //udp_frame udp;
-    //tcp_frame tcp;
+    tcp_frame tcp;
   } pp  __attribute__((packed));
 } ipv4_frame __attribute__((packed));
 
@@ -400,6 +442,20 @@ void dump_ipv4_frame(const ipv4_frame* fr) {
     fr->src_ip.b8[0], fr->src_ip.b8[1], fr->src_ip.b8[2], fr->src_ip.b8[3],
     fr->dest_ip.b8[0], fr->dest_ip.b8[1], fr->dest_ip.b8[2], fr->dest_ip.b8[3]);
   //printk("  IPv4: &src=%p &dest=%p\n", &(fr->src_ip.b32), &(fr->dest_ip.b32));
+  switch (fr->proto) {
+    case IP_PROTO_ICMP:
+      //dump_icmp_frame(&(fr->pp.arp));
+      break;
+    case IP_PROTO_TCP:
+      dump_tcp_frame(&(fr->pp.tcp));
+      break;
+    case IP_PROTO_UDP:
+      //dump_udp_frame(&(fr->pp.udp));
+      break;
+    default:
+      printk("         proto=0x%04x UNKNOWN\n", fr->proto);
+      break;
+  }
 }
 
 typedef struct arp_frame {
