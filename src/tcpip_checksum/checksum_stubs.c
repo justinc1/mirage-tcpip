@@ -539,10 +539,13 @@ typedef struct vlan_frame {
   } pp __attribute__((packed)); /* payload */
 } vlan_frame __attribute__((packed));
 
+#define vlan_frame_get_tag(fr) (local_ntohs(fr->prio_dei_id) & 0x0FFF)
+#define vlan_frame_set_tag(fr, tag) (fr->prio_dei_id = local_htons(  (local_ntohs(fr->prio_dei_id) & 0xF000) | (tag & 0x0FFF)  ))
+
 void dump_vlan_frame(const vlan_frame* fr) {
   //printk("  VLAN: &=%p\n", fr);
   printk("  VLAN: tag=%d type=0x%04x\n",
-    local_ntohs(fr->prio_dei_id) & 0x0FFF, local_ntohs(fr->type) );
+    vlan_frame_get_tag(fr), local_ntohs(fr->type) );
   switch (local_ntohs(fr->type)) {
     case ETH_TYPE_ARP:
       dump_arp_frame(&(fr->pp.arp));
@@ -608,4 +611,49 @@ eth_dump_frame(value v_cstruct)
   dump_ethernet_frame(eth_fr);
 
   CAMLreturn(Val_int(0));
+}
+
+/*
+input - ethernt frame
+output - modified ehternet frame.
+return - 1 if output frame should be forwarded.
+
+Only VLAN tag is changed.
+TODO - is in place modification valid?
+*/
+CAMLprim value
+eth_forward_frame(value v_cstruct)
+{
+  CAMLparam1(v_cstruct);
+  CAMLlocal3(v_ba, v_ofs, v_len);
+  v_ba = Field(v_cstruct, 0);
+  v_ofs = Field(v_cstruct, 1);
+  v_len = Field(v_cstruct, 2);
+  int off = Int_val(v_ofs);
+  int len = Int_val(v_len);
+  debug("ETH frame offset=%d length=%d\n", off, len);
+
+  unsigned char *addr = Caml_ba_data_val(v_ba);
+  addr += off;
+  ethernet_frame *eth_fr = (ethernet_frame*)(void*)addr;
+  //dump_ethernet_frame(eth_fr);
+  if(local_ntohs(eth_fr->type) != ETH_TYPE_VLAN) {
+    CAMLreturn(Val_int(0));
+  }
+  vlan_frame *vlan_fr = &(eth_fr->pp.vlan);
+  uint16_t vlan_tag = vlan_frame_get_tag(vlan_fr);
+  switch (vlan_tag) {
+    case 10:
+      vlan_tag = 11;
+      break;
+    case 11:
+      vlan_tag = 10;
+      break;
+    default:
+      // drop other VLANs
+      CAMLreturn(Val_int(0));
+  }
+
+  vlan_frame_set_tag(vlan_fr, vlan_tag);
+  CAMLreturn(Val_int(1));
 }

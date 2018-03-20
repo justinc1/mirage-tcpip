@@ -19,6 +19,7 @@ open Result
 open Lwt.Infix
 
 external eth_dump_frame: Cstruct.t -> int = "eth_dump_frame"
+external eth_forward_frame: Cstruct.t -> int = "eth_forward_frame"
 
 let src = Logs.Src.create "ethif" ~doc:"Mirage Ethernet"
 module Log = (val Logs.src_log src : Logs.LOG)
@@ -55,7 +56,10 @@ module Make(Netif : Mirage_net_lwt.S) = struct
     Log.info (fun f -> f "Eth.input");
     Cstruct.hexdump frame;
     eth_dump_frame frame;
-    (* write t frame; *)
+    eth_forward_frame frame;
+    eth_dump_frame frame;
+    write t frame;
+
     let open Ethif_packet in
     MProf.Trace.label "ethif.input";
     let of_interest dest =
