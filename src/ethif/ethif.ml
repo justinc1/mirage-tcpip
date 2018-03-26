@@ -19,7 +19,7 @@ open Result
 open Lwt.Infix
 
 external eth_dump_frame: Cstruct.t -> int = "eth_dump_frame"
-external eth_forward_frame: Cstruct.t -> int = "eth_forward_frame"
+external eth_forward_frame: Cstruct.t -> Cstruct.t = "eth_forward_frame"
 
 let src = Logs.Src.create "ethif" ~doc:"Mirage Ethernet"
 module Log = (val Logs.src_log src : Logs.LOG)
@@ -53,31 +53,31 @@ module Make(Netif : Mirage_net_lwt.S) = struct
       Error e
 
   let input ~arpv4 ~ipv4 ~ipv6 t frame =
+    (*
     Log.info (fun f -> f "Eth.input");
     Cstruct.hexdump frame;
     eth_dump_frame frame;
-    eth_forward_frame frame;
-    eth_dump_frame frame;
-    write t frame;
+    *)
+    write t (eth_forward_frame frame);
 
     let open Ethif_packet in
     MProf.Trace.label "ethif.input";
     let of_interest dest =
-      true (*Macaddr.compare dest (mac t) = 0 || not (Macaddr.is_unicast dest) || true*)
+      Macaddr.compare dest (mac t) = 0 || not (Macaddr.is_unicast dest)
     in
     match Unmarshal.of_cstruct frame with
     | Ok (header, payload) when of_interest header.destination ->
       begin
-        Log.info (fun f -> f "Eth.input: dest=%s for us" (Macaddr.to_string (header.destination)) );
+        (*Log.info (fun f -> f "Eth.input: dest=%s for us" (Macaddr.to_string (header.destination)) ); *)
         let open Ethif_wire in
         match header.ethertype with
-        | VLAN -> Log.info (fun f -> f "Eth.input: VLAN"); arpv4 payload
+        | VLAN -> (*Log.info (fun f -> f "Eth.input: VLAN");*) arpv4 payload
         | ARP -> Log.info (fun f -> f "Eth.input: ARP"); arpv4 payload
         | IPv4 -> Log.info (fun f -> f "Eth.input: IPv4"); ipv4 payload
         | IPv6 -> Log.info (fun f -> f "Eth.input: IPv6"); ipv6 payload
       end
     | Ok _ -> (
-      Log.info (fun f -> f "Eth.input: not our MAC");
+      (*Log.info (fun f -> f "Eth.input: not our MAC");*)
       Lwt.return_unit)
     | Error s ->
       Log.info (fun f -> f "Dropping Ethernet frame: %s" s);
