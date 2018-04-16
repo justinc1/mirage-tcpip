@@ -249,7 +249,118 @@ void dump_ethernet_frame(const ethernet_frame* fr) {
   }
 }
 
+int vfw_process_arp(arp_frame* fr, int len) {
+  return len;
+}
+
+/*int vfw_process_ipv4_icmp(icmp_frame* fr, int len) {
+  return len;
+}
+
+int vfw_process_ipv4_tcp(tcp_frame* fr, int len) {
+  return len;
+}
+
+int vfw_process_ipv4_udp(udp_frame* fr, int len) {
+  return len;
+}*/
+
+// 10.77.1.10
+// network order
+#define IP_FROM_DOTTED(aa, bb, cc, dd) local_htonl((aa)*256*256*256 + (bb)*256*256 + (cc)*256 + (dd))
+#define SRV1_IP IP_FROM_DOTTED(10,77,1,10)
+#define SRV2_IP IP_FROM_DOTTED(10,77,1,11)
+#define TRUSTED_CLIENT1_IP IP_FROM_DOTTED(10,77,2,10)
+#define TRUSTED_SUBNET IP_FROM_DOTTED(10,77,2,0)
+
+#define IP_MASK_32 0xFFFFFFFF
+#define IP_MASK_24 0x00FFFFFF
+#define IP_MASK_16 0x0000FFFF
+
+#define ICMP_TYPE_ECHO_REPLY 0
+#define ICMP_TYPE_ECHO_REQUEST 8
+
+// IP and port in network order
+int header_tcp_match(ipv4_frame *fr,
+  uint32_t src_ip,  uint32_t src_mask,  uint16_t sport,
+  uint32_t dest_ip, uint32_t dest_mask, uint16_t dport) {
+  tcp_frame *tcp_fr = &(fr->pp.tcp);
+  if (
+    (fr->src_ip.b32 & src_mask) == (src_ip & src_mask) &&
+    (fr->dest_ip.b32 & dest_mask) == (dest_ip & dest_mask) &&
+    (sport == 0 || tcp_fr->sport == sport) &&
+    (dport == 0 || tcp_fr->dport == dport)
+    ) {
+    return 1;
+  }
+  return 0;
+}
+
+int header_icmp_match(ipv4_frame *fr,
+  uint32_t src_ip,  uint32_t src_mask,
+  uint32_t dest_ip, uint32_t dest_mask,
+  uint8_t type) {
+  icmp_frame *icmp_fr = &(fr->pp.icmp);
+  if (
+    (fr->src_ip.b32 & src_mask) == (src_ip & src_mask) &&
+    (fr->dest_ip.b32 & dest_mask) == (dest_ip & dest_mask) &&
+    (type == 0xFF || icmp_fr->type == type)
+    ) {
+    return 1;
+  }
+  return 0;
+}
+
+#define ALLOW_TCP_FROM_ANY(fr, dest_ip, dest_port) \
+  { \
+    if (header_tcp_match(fr, 0x00000000, 0x00000000, 0,         dest_ip,    IP_MASK_32, dest_port)) return len; \
+    if (header_tcp_match(fr, dest_ip,    IP_MASK_32, dest_port, 0x00000000, 0x00000000, 0)) return len; \
+  }
+
+#define ALLOW_TCP_FROM_ONE(fr, src_ip, dest_ip, dest_port) \
+  { \
+    if (header_tcp_match(fr, src_ip,  IP_MASK_32, 0,         dest_ip, IP_MASK_32, dest_port)) return len; \
+    if (header_tcp_match(fr, dest_ip, IP_MASK_32, dest_port, src_ip,  IP_MASK_32, 0)) return len; \
+  }
+
+#define ALLOW_TCP_FROM_SUBNET(fr, src_ip, src_mask, dest_ip, dest_port) \
+  { \
+    if (header_tcp_match(fr, src_ip,  src_mask,   0,         dest_ip, IP_MASK_32, dest_port)) return len; \
+    if (header_tcp_match(fr, dest_ip, IP_MASK_32, dest_port, src_ip,  src_mask,   0)) return len; \
+  }
+
+// sport and dport are at same offset for TCP and UDP
+#define header_udp_match header_tcp_match
+#define ALLOW_UDP_FROM_ANY ALLOW_TCP_FROM_ANY
+#define ALLOW_UDP_FROM_ONE ALLOW_TCP_FROM_ONE
+#define ALLOW_UDP_FROM_SUBNET ALLOW_TCP_FROM_SUBNET
+
+int vfw_process_ipv4(ipv4_frame* fr, int len) {
+  // return len; - ACCEPT
+  // return 0; - DROP
+  switch(fr->proto) {
+    case IP_PROTO_ICMP:
+      if (header_icmp_match(fr, 0x00000000, 0x00000000, SRV1_IP, IP_MASK_32, ICMP_TYPE_ECHO_REQUEST)) return len;
+      if (header_icmp_match(fr, SRV1_IP, IP_MASK_32, 0x00000000, 0x00000000, ICMP_TYPE_ECHO_REPLY)) return len;
+    case IP_PROTO_TCP:
+      ALLOW_TCP_FROM_ANY(fr, SRV1_IP, local_htons(80));
+      if (header_tcp_match(fr, 0x00000000, 0x00000000, 0,  SRV1_IP, IP_MASK_32, local_htons(22))) return 0;
+      ALLOW_TCP_FROM_ANY(fr, SRV1_IP, local_htons(12865));
+      ALLOW_TCP_FROM_ANY(fr, SRV1_IP, local_htons(12866));
+      //ALLOW_TCP_FROM_ONE(fr, TRUSTED_CLIENT1_IP, SRV1_IP, local_htons(12865));
+      //ALLOW_TCP_FROM_SUBNET(fr, TRUSTED_SUBNET, IP_MASK_24, SRV1_IP, local_htons(12866));
+      return 0;
+    case IP_PROTO_UDP:
+      return 0;
+    default:
+      return 0;
+      break;
+  }
+  return len;
+}
+
 int vfw_process(ethernet_frame* eth_fr, int len) {
+  //dump_ethernet_frame(eth_fr);
   // check for min required length
   if(len <= 18) {
     return 0;
@@ -274,8 +385,28 @@ int vfw_process(ethernet_frame* eth_fr, int len) {
       return 0;
   }
 
+  ipv4_frame  *ipv4_fr = NULL;
+  arp_frame *arp_fr = NULL;
+
+  switch(local_ntohs(vlan_fr->type)) {
+    case ETH_TYPE_ARP:
+        arp_fr = &(vlan_fr->pp.arp);
+        len = vfw_process_arp(arp_fr, len);
+        break;
+    case ETH_TYPE_IPv4:
+        ipv4_fr = &(vlan_fr->pp.ipv4);
+        len = vfw_process_ipv4(ipv4_fr, len);
+        break;
+    default:
+        //dump_printk("  DROP vlan_fr->type=0x%04x eth_fr=%p vlan_fr=%p\n", local_ntohs(vlan_fr->type), eth_fr, vlan_fr);
+        return 0;
+        break;
+  }
+
   // TODO - apply vFW rules
 
+//DONE_FWD:
   vlan_frame_set_tag(vlan_fr, vlan_tag);
+  //dump_printk("  FWD new len=%d\n", len);
   return len;
 }
