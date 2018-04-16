@@ -398,30 +398,7 @@ eth_forward_frame(value v_cstruct)
   addr += off;
   ethernet_frame *eth_fr = (ethernet_frame*)(void*)addr;
   //dump_ethernet_frame(eth_fr);
-  if(local_ntohs(eth_fr->type) != ETH_TYPE_VLAN) {
-    ret_len = 0;
-    goto done;
-  }
-  vlan_frame *vlan_fr = &(eth_fr->pp.vlan);
-  uint16_t vlan_tag = vlan_frame_get_tag(vlan_fr);
-  switch (vlan_tag) {
-    case 10:
-      vlan_tag = 11;
-      //dump_printk("  FWD vlan 10 to 11\n");
-      break;
-    case 11:
-      vlan_tag = 10;
-      //dump_printk("  FWD vlan 11 to 10\n");
-      break;
-    default:
-      // drop other VLANs
-      ret_len = 0;
-      goto done;
-  }
-
-  //jc_test();
-  ret_len = len;
-  vlan_frame_set_tag(vlan_fr, vlan_tag);
+  ret_len = vfw_process(eth_fr, len);
 
 done:
   v_ret = caml_alloc(3, 0);
