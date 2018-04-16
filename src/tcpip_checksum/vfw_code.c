@@ -340,17 +340,39 @@ int vfw_process_ipv4(ipv4_frame* fr, int len) {
   // return 0; - DROP
   switch(fr->proto) {
     case IP_PROTO_ICMP:
+      // SRV1
       if (header_icmp_match(fr, 0x00000000, 0x00000000, SRV1_IP, IP_MASK_32, ICMP_TYPE_ECHO_REQUEST)) return len;
       if (header_icmp_match(fr, SRV1_IP, IP_MASK_32, 0x00000000, 0x00000000, ICMP_TYPE_ECHO_REPLY)) return len;
+      // icmp redirect - drop
+
+      // SRV2
+      if (header_icmp_match(fr, 0x00000000, 0x00000000, SRV2_IP, IP_MASK_32, ICMP_TYPE_ECHO_REQUEST)) return len;
+      if (header_icmp_match(fr, SRV2_IP, IP_MASK_32, 0x00000000, 0x00000000, ICMP_TYPE_ECHO_REPLY)) return len;
+      // icmp redirect - drop
     case IP_PROTO_TCP:
+      // SRV1
       ALLOW_TCP_FROM_ANY(fr, SRV1_IP, local_htons(80));
-      if (header_tcp_match(fr, 0x00000000, 0x00000000, 0,  SRV1_IP, IP_MASK_32, local_htons(22))) return 0;
+      ALLOW_TCP_FROM_ANY(fr, SRV1_IP, local_htons(81));
+      ALLOW_TCP_FROM_ANY(fr, SRV1_IP, local_htons(443));
+      ALLOW_TCP_FROM_SUBNET(fr, TRUSTED_SUBNET, IP_MASK_24, SRV1_IP, local_htons(8080));
+      ALLOW_TCP_FROM_SUBNET(fr, TRUSTED_SUBNET, IP_MASK_24, SRV1_IP, local_htons(22));
+      // tcp port 3333 - drop all
       ALLOW_TCP_FROM_ANY(fr, SRV1_IP, local_htons(12865));
       ALLOW_TCP_FROM_ANY(fr, SRV1_IP, local_htons(12866));
       //ALLOW_TCP_FROM_ONE(fr, TRUSTED_CLIENT1_IP, SRV1_IP, local_htons(12865));
       //ALLOW_TCP_FROM_SUBNET(fr, TRUSTED_SUBNET, IP_MASK_24, SRV1_IP, local_htons(12866));
+
+      // SRV2
+
       return 0;
     case IP_PROTO_UDP:
+      // SRV1
+
+      // SRV2
+      ALLOW_UDP_FROM_ANY(fr, SRV2_IP, local_htons(53));
+      ALLOW_UDP_FROM_SUBNET(fr, TRUSTED_SUBNET, IP_MASK_24, SRV2_IP, local_htons(123));
+      // udp port 3333 - drop
+
       return 0;
     default:
       return 0;
