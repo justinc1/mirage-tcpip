@@ -26,16 +26,16 @@ We will try to forward/drop only most basic IP packets.
 #define IP_PROTO_TCP  0x06
 #define IP_PROTO_UDP  0x11
 
-typedef struct icmp_frame {
+typedef struct __attribute__((packed)) icmp_frame {
   uint8_t type;
   uint8_t code;
   uint16_t checksum;
   uint16_t id;
   uint16_t seq;
-  union {
+  union __attribute__((packed)) {
     uint8_t __data[1500];
-  } pp  __attribute__((packed));
-} icmp_frame __attribute__((packed));
+  } pp;
+} icmp_frame;
 
 void dump_icmp_frame(const icmp_frame* fr) {
   dump_printk("  ICMP: type=%d code=%d checksum=%d id=%d seq=%d\n",
@@ -44,7 +44,7 @@ void dump_icmp_frame(const icmp_frame* fr) {
   // data - length is determined by ipv4_frame.length
 }
 
-typedef struct tcp_frame {
+typedef struct  __attribute__((packed)) tcp_frame {
   uint16_t sport;
   uint16_t dport;
   uint32_t seq;
@@ -56,7 +56,7 @@ typedef struct tcp_frame {
   /* options - variable length */
   /* data - variable length */
   uint8_t __var_len_pp[1500];
-} tcp_frame __attribute__((packed));
+} tcp_frame;
 
 #define tcp_frame_get_header_len(fr) (local_ntohs(fr->header_len_flags) >> 12)
 #define tcp_frame_get_flags(fr)      (local_ntohs(fr->header_len_flags) & 0x0FFF)
@@ -70,21 +70,21 @@ void dump_tcp_frame(const tcp_frame* fr) {
     local_ntohl(fr->seq), local_ntohl(fr->ack), header_len, flags, local_ntohs(fr->checksum));
 }
 
-typedef struct udp_frame {
+typedef struct __attribute__((packed)) udp_frame {
   uint16_t sport;
   uint16_t dport;
   uint16_t length;
   uint16_t checksum;
   /* data - variable length */
   uint8_t data[1500];
-} udp_frame __attribute__((packed));
+} udp_frame;
 
 void dump_udp_frame(const udp_frame* fr) {
   dump_printk("  UDP: sport=%d dport=%d length=%d checksum=%d\n",
     local_ntohs(fr->sport), local_ntohs(fr->dport), local_ntohs(fr->length), local_ntohs(fr->checksum));
 }
 
-typedef struct ipv4_frame {
+typedef struct __attribute__((packed)) ipv4_frame {
   uint8_t version; /* version << 4 | header length */
   uint8_t services;
   uint16_t length;
@@ -93,21 +93,21 @@ typedef struct ipv4_frame {
   uint8_t ttl;
   uint8_t proto;
   uint16_t checksum;
-  union {
+  union __attribute__((packed)) {
     uint32_t b32;
     uint8_t b8[4];
-  } src_ip  __attribute__((packed));
-  union {
+  } src_ip;
+  union __attribute__((packed)) {
     uint32_t b32;
     uint8_t b8[4];
-  } dest_ip  __attribute__((packed));
-  union {
+  } dest_ip;
+  union __attribute__((packed)) {
     uint8_t __data[1500];
     icmp_frame icmp;
     udp_frame udp;
     tcp_frame tcp;
-  } pp  __attribute__((packed));
-} ipv4_frame __attribute__((packed));
+  } pp;
+} ipv4_frame;
 
 void dump_ipv4_frame(const ipv4_frame* fr) {
   //printk("  IPv4: &=%p\n", fr);
@@ -135,7 +135,7 @@ void dump_ipv4_frame(const ipv4_frame* fr) {
   }
 }
 
-typedef struct arp_frame {
+typedef struct __attribute__((packed)) arp_frame {
   uint16_t hw_type;
   uint16_t proto_type;
   uint8_t hw_size;
@@ -149,7 +149,7 @@ typedef struct arp_frame {
   payload [];
   */
   uint8_t __var_len_pp[1500];
-} arp_frame __attribute__((packed));
+} arp_frame;
 
 #define arp_frame_get_sender_mac(fr) (fr->__var_len_pp)
 #define arp_frame_get_sender_ip(fr)  (fr->__var_len_pp + fr->hw_size)
@@ -185,15 +185,15 @@ void dump_arp_frame(const arp_frame* fr) {
   dump_printk("\n");
 }
 
-typedef struct vlan_frame {
+typedef struct __attribute__((packed)) vlan_frame {
   uint16_t prio_dei_id;
   uint16_t type;
-  union {
+  union __attribute__((packed)) {
     uint8_t __data[1500];
     ipv4_frame ipv4;
     arp_frame arp;
-  } pp __attribute__((packed)); /* payload */
-} vlan_frame __attribute__((packed));
+  } pp; /* payload */
+} vlan_frame;
 
 #define vlan_frame_get_tag(fr) (local_ntohs(fr->prio_dei_id) & 0x0FFF)
 #define vlan_frame_set_tag(fr, tag) (fr->prio_dei_id = local_htons(  (local_ntohs(fr->prio_dei_id) & 0xF000) | (tag & 0x0FFF)  ))
@@ -215,17 +215,17 @@ void dump_vlan_frame(const vlan_frame* fr) {
   }
 }
 
-typedef struct ethernet_frame {
+typedef struct __attribute__((packed)) ethernet_frame {
   uint8_t dest_mac[6];
   uint8_t src_mac[6];
   uint16_t type;
-  union {
+  union __attribute__((packed)) {
     uint8_t __data[1500];
     vlan_frame vlan;
     ipv4_frame ipv4;
     arp_frame arp;
-  } pp __attribute__((packed)); /* payload */
-} ethernet_frame __attribute__((packed));
+  } pp; /* payload */
+} ethernet_frame;
 
 void dump_ethernet_frame(const ethernet_frame* fr) {
   dump_printk("  ETHER: &=%p\n", fr);
