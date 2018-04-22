@@ -425,10 +425,41 @@ int vfw_process(ethernet_frame* eth_fr, int len) {
         break;
   }
 
-  // TODO - apply vFW rules
-
 //DONE_FWD:
   vlan_frame_set_tag(vlan_fr, vlan_tag);
+  //dump_printk("  FWD new len=%d\n", len);
+  return len;
+}
+
+/*
+OSv - forward betwee two NICs
+*/
+int vfw_process_osv(ethernet_frame* eth_fr, int len) {
+  //dump_ethernet_frame(eth_fr);
+  // check for min required length
+  if(len <= 18) {
+    return 0;
+  }
+
+  ipv4_frame  *ipv4_fr = NULL;
+  arp_frame *arp_fr = NULL;
+
+  switch(local_ntohs(eth_fr->type)) {
+    case ETH_TYPE_ARP:
+        arp_fr = &(eth_fr->pp.arp);
+        len = vfw_process_arp(arp_fr, len);
+        break;
+    case ETH_TYPE_IPv4:
+        ipv4_fr = &(eth_fr->pp.ipv4);
+        len = vfw_process_ipv4(ipv4_fr, len);
+        break;
+    default:
+        //dump_printk("  DROP eth_fr->type=0x%04x eth_fr=%p \n", local_ntohs(eth_fr->type), eth_fr);
+        return 0;
+        break;
+  }
+
+//DONE_FWD:
   //dump_printk("  FWD new len=%d\n", len);
   return len;
 }
