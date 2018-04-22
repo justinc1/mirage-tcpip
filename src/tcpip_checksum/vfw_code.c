@@ -2,11 +2,43 @@
 # define DBG 0
 #endif
 
+#ifndef printk
 int printk(const char *format, ...);
+#endif // printk
 #define debug(fmt, ...) if(DBG) { printk("%s:%d %s: " fmt, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); }
 #define dump_printk(fmt, ...) if(1) { printk(fmt, ##__VA_ARGS__); }
 
-void jc_test() {
+struct arp_frame;
+struct vlan_frame;
+struct ethernet_frame;
+struct ipv4_frame;
+struct icmp_frame;
+struct tcp_frame;
+struct udp_frame;
+
+void dump_vlan_frame(const struct vlan_frame* fr);
+void dump_ethernet_frame(const struct ethernet_frame* fr);
+void dump_icmp_frame(const struct icmp_frame* fr);
+void dump_tcp_frame(const struct tcp_frame* fr);
+void dump_udp_frame(const struct udp_frame* fr);
+void dump_ipv4_frame(const struct ipv4_frame* fr);
+void printk_bytes(const char fmt[], const uint8_t* arr, int len, const char sep[]) ;
+void dump_arp_frame(const struct arp_frame* fr);
+
+int vfw_process_arp(struct arp_frame* fr, int len);
+int header_tcp_match(struct ipv4_frame *fr,
+  uint32_t src_ip,  uint32_t src_mask,  uint16_t sport,
+  uint32_t dest_ip, uint32_t dest_mask, uint16_t dport);
+int header_icmp_match(struct ipv4_frame *fr,
+  uint32_t src_ip,  uint32_t src_mask,
+  uint32_t dest_ip, uint32_t dest_mask,
+  uint8_t type);
+int vfw_process_ipv4(struct ipv4_frame* fr, int len);
+int vfw_process(struct ethernet_frame* eth_fr, int len);
+int vfw_process_osv(struct ethernet_frame* eth_fr, int len);
+
+void jc_test(void);
+void jc_test(void) {
     //printk("TTRT in jc_test\n"); // TCP_STREAM goes from 650 to 32 MBit/s
     //printk(""); // TCP_STREAM goes from 650 to 480 MBit/s
 }
@@ -164,7 +196,7 @@ void printk_bytes(const char fmt[], const uint8_t* arr, int len, const char sep[
   if(len <= 0) return;
   dump_printk(fmt, arr[0]);
   for (int ii=1; ii<len; ii++) {
-    dump_printk(sep);
+    dump_printk("%s", sep);
     dump_printk(fmt, arr[ii]);
   }
 }
