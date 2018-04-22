@@ -179,7 +179,7 @@ void dump_arp_frame(const arp_frame* fr) {
   printk_bytes("%d", arp_frame_get_sender_ip(fr), fr->proto_size, ".");
   dump_printk("\n");
   dump_printk("  ARP: target MAC=");
-  dump_printk("%02x", arp_frame_get_target_mac(fr), fr->hw_size, ":");
+  printk_bytes("%02x", arp_frame_get_target_mac(fr), fr->hw_size, ":");
   dump_printk(" IP=");
   printk_bytes("%d", arp_frame_get_target_ip(fr), fr->proto_size, ".");
   dump_printk("\n");
